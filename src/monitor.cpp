@@ -206,6 +206,28 @@ void publish() {
     uint8_t sent = s_pendingCount;
 
     bool srv = postToServer(payload);
+
+    /* Outages get their own keyed node as well as riding along in `status`.
+     * `status` is overwritten every minute, so an outage recorded only there
+     * would vanish on the next heartbeat if nothing had read it in between -
+     * which is exactly the case Firebase is here to cover. Keyed by start
+     * time, so a retry overwrites rather than duplicates. */
+    if (fb::ready()) {
+        for (uint8_t i = 0; i < sent; i++) {
+            String path = String("devices/" MONITOR_DEVICE_ID "/events/") +
+                          String((uint32_t)s_pending[i].start);
+            String body = "{\"kind\":\"" + String(s_pending[i].kind) + "\"";
+            body += ",\"start_ts\":" + String((uint32_t)s_pending[i].start);
+            body += ",\"end_ts\":" + String((uint32_t)s_pending[i].end);
+            body += ",\"duration_s\":" +
+                    String((uint32_t)(s_pending[i].end - s_pending[i].start));
+            body += ",\"fw\":\"" FW_VERSION "\"}";
+            if (!fb::put(path.c_str(), body)) {
+                Serial.printf("[mon] event write failed: %s\n", fb::lastError());
+            }
+        }
+    }
+
     bool fbo = fb::put("devices/" MONITOR_DEVICE_ID "/status", payload);
     if (!fbo) Serial.printf("[mon] firebase: %s\n", fb::lastError());
 

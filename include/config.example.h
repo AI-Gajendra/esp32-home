@@ -84,6 +84,16 @@
 #define FIREBASE_EMAIL              "device@your-project.firebaseapp.com"
 #define FIREBASE_PASSWORD           "change-me"
 
+/* Legacy database secret. When non-empty it is used INSTEAD of the Auth user
+ * above: one string, no sign-in, no token refresh, nothing to expire.
+ *
+ * The trade-off is real and worth knowing: a database secret bypasses the
+ * security rules completely and grants full read/write over the entire
+ * database. It is recoverable from a firmware dump, so it only belongs in a
+ * project that holds nothing but this telemetry. Google has deprecated it.
+ * Leave it empty to use FIREBASE_EMAIL / FIREBASE_PASSWORD instead. */
+#define FIREBASE_DB_SECRET          ""
+
 /* Self-heal. The device is the thing measuring the outage, so it must not be
  * the thing that is broken: if nothing has been published for this long it
  * re-associates, and if that does not help either, it reboots. */

@@ -18,9 +18,13 @@ namespace fb {
 void begin();
 
 /** Sign in, or refresh a token that is about to expire. Cheap when neither is
- *  needed. Returns whether a usable token is now held. */
+ *  needed. Returns whether a usable credential is now held. A no-op when a
+ *  legacy database secret is configured. */
 bool ensureAuth();
 bool ready();
+
+/** True when FIREBASE_DB_SECRET is set and the token path is bypassed. */
+bool usingSecret();
 
 /** PUT a JSON document at `path` (no leading slash, no .json suffix). */
 bool put(const char *path, const String &json);

@@ -156,7 +156,10 @@ void begin() {
     setError("not signed in yet");
 }
 
+bool usingSecret() { return strlen(FIREBASE_DB_SECRET) > 0; }
+
 bool ready() {
+    if (usingSecret()) return true;
     return s_idToken.length() > 0 && (int32_t)(s_expiresAtMs - millis()) > 0;
 }
 
@@ -169,6 +172,11 @@ uint32_t tokenExpiresInS() {
 uint32_t consecutiveFailures() { return s_failures; }
 
 bool ensureAuth() {
+    /* A legacy database secret needs no sign-in and never expires, so the
+     * whole token dance is skipped. It also bypasses the database rules
+     * entirely - see the warning on FIREBASE_DB_SECRET in config.h. */
+    if (usingSecret()) return true;
+
     if (ready() && tokenExpiresInS() > REFRESH_MARGIN_S) return true;
 
     /* Back off after repeated failures. Until the Firebase user exists, every
@@ -208,7 +216,8 @@ bool ensureAuth() {
 bool put(const char *path, const String &json) {
     if (!ensureAuth()) return false;
 
-    String url = String(FIREBASE_DB_URL) + "/" + path + ".json?auth=" + s_idToken;
+    String url = String(FIREBASE_DB_URL) + "/" + path + ".json?auth=" +
+                 (usingSecret() ? String(FIREBASE_DB_SECRET) : s_idToken);
     String resp;
     int code = request(url.c_str(), "application/json", json, resp, "PUT");
 
@@ -216,8 +225,9 @@ bool put(const char *path, const String &json) {
         setError("PUT %s -> HTTP %d", path, code);
         s_failures++;
         /* 401 means the token went stale early; drop it so the next attempt
-         * re-authenticates instead of retrying with a dead credential. */
-        if (code == 401) s_expiresAtMs = millis();
+         * re-authenticates instead of retrying with a dead credential. A
+         * secret cannot go stale, so there is nothing to drop. */
+        if (code == 401 && !usingSecret()) s_expiresAtMs = millis();
         return false;
     }
     s_failures = 0;

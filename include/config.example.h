@@ -57,3 +57,41 @@
 /* 1 = POST /api/relay needs the OTA login too. The home page button then
  * prompts for it, so leave at 0 unless the LAN is shared. */
 #define RELAY_REQUIRE_AUTH      0
+
+/* ── Internet uptime monitor ──────────────────────────────────────────────────
+ * Every minute the device decides whether the internet works and reports that
+ * to two independent places. Silence in both is what the dashboard treats as an
+ * outage, so a failure of either sink is distinguishable from a real one. */
+#define MONITOR_ENABLED             1
+#define MONITOR_DEVICE_ID           "esp32-home"
+#define MONITOR_PERIOD_MS           60000UL
+
+/* Neutral internet probe. A captive portal or a dead WAN answers with
+ * something other than 204, which is exactly the case we want to catch:
+ * Wi-Fi associated, router happy, no actual internet. */
+#define MONITOR_PROBE_URL           "http://connectivitycheck.gstatic.com/generate_204"
+#define MONITOR_PROBE_EXPECT        204
+#define MONITOR_PROBE_TIMEOUT_MS    6000
+
+/* Sink 1: your own server. */
+#define INGEST_URL                  "https://esphome.sitelala.qzz.io/api/ingest"
+#define INGEST_TOKEN                "change-me"
+
+/* Sink 2: Firebase Realtime Database, authenticated as a dedicated user whose
+ * writes the database rules confine to this device's own subtree. */
+#define FIREBASE_API_KEY            "change-me"
+#define FIREBASE_DB_URL             "https://your-project-default-rtdb.firebaseio.com"
+#define FIREBASE_EMAIL              "device@your-project.firebaseapp.com"
+#define FIREBASE_PASSWORD           "change-me"
+
+/* Self-heal. The device is the thing measuring the outage, so it must not be
+ * the thing that is broken: if nothing has been published for this long it
+ * re-associates, and if that does not help either, it reboots. */
+#define MONITOR_RECONNECT_AFTER_MS  (5UL * 60 * 1000)
+#define MONITOR_REBOOT_AFTER_MS     (30UL * 60 * 1000)
+
+/* Wall-clock time. Needed to timestamp an outage the device lived through and
+ * reports only afterwards. */
+#define NTP_SERVER_1                "pool.ntp.org"
+#define NTP_SERVER_2                "time.google.com"
+#define NTP_SERVER_3                "time.cloudflare.com"

@@ -15,12 +15,19 @@ include/
   version.h                 FW_VERSION, build stamp
   net.h                     non-blocking Wi-Fi with fallback AP
   relay.h                   one relay channel on GPIO 23
+  monitor.h                 internet up/down watcher, publishes every 60s
+  fb_client.h               Firebase Realtime Database REST client
+  timekeeping.h             NTP + an NVS-backed clock that survives outages
+  certs.h                   pinned root CAs (generated)
   boot_guard.h              anti-brick: verify-or-roll-back supervision
   ota_update.h              the OTA module: endpoints + upload page
   update_page.h             the /update HTML
 src/
   main.cpp                  banner, hello-world page, /health, wiring
   net.cpp  boot_guard.cpp  ota_update.cpp  relay.cpp
+  monitor.cpp  fb_client.cpp  timekeeping.cpp
+web/
+  esphome-uptime            the dashboard + ingest server (see web/README.md)
 tools/
   ota_upload.py             CLI flasher with MD5 verification and a progress bar
 ```
@@ -113,6 +120,51 @@ air is ever marked pending, so unplugging the board is not counted against it.
 
 \* set `RELAY_REQUIRE_AUTH` to 1 in `config.h` to put the OTA login in front of
 relay control too.
+
+## Internet uptime monitoring
+
+Once a minute the device decides whether the internet actually works and
+reports it to two independent places, so the dashboard can tell a real outage
+apart from a broken reporting path.
+
+**Three states, and the third is the point:**
+
+| State | Meaning |
+| --- | --- |
+| `online` | associated, and a neutral probe returned HTTP 204 |
+| `no_internet` | associated to your Wi-Fi, router fine, probe failed - **the ISP** |
+| `wifi_down` | not associated at all - the router, or the device |
+
+The probe is `connectivitycheck.gstatic.com/generate_204` over plain HTTP: a
+captive portal or a dead WAN answers with something other than 204, which is
+exactly the case worth catching.
+
+An outage can only be reported after it ends, so the device timestamps the
+window itself and backfills it on recovery. That needs a clock across a
+reboot, which is what `timekeeping.h` provides: NTP when there is internet,
+and an epoch persisted to NVS every five minutes so a device that boots during
+an outage still knows roughly what time it is (flagged `approx`, never
+confused with a real sync).
+
+Meanwhile the server notices the silence on its own clock. The two records
+cross-check each other: the server says *when*, the device says *why*.
+
+**Dashboard:** https://esphome.sitelala.qzz.io
+
+**Why it will not quietly go to sleep any more.** The supervision that reboots
+a wedged device runs on the main loop, not inside the monitor task - so a hang
+inside a socket call cannot disable its own watchdog:
+
+- nothing published for `MONITOR_RECONNECT_AFTER_MS` (5 min) -> force a fresh
+  Wi-Fi association
+- nothing published for `MONITOR_REBOOT_AFTER_MS` (30 min) -> reboot
+- every heartbeat carries `boot_id` and `reset_reason`, so the dashboard shows
+  reboots explicitly - from outside, a device that restarted and a device that
+  lost its connection look identical without that.
+
+All network work happens on a dedicated 16 KB-stack task, because TLS blocks
+for seconds and must never stall `loop()` or the async web server. It also
+stands down entirely while an OTA is streaming.
 
 ## The relay
 

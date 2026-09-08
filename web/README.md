@@ -68,6 +68,22 @@ ssh oci-free-2 'bash -lc "cd ~/apps/esphome-uptime && npm install && npm run bui
 Configuration is `.env` (never committed) — see `.env.example`. `INGEST_TOKEN`
 must match `INGEST_TOKEN` in the firmware's `include/config.h`.
 
+## Firebase retention
+
+Nothing in the Realtime Database expires on its own. `server/prune.js` sweeps
+`devices/<id>/events` every hour and deletes children older than
+`FIREBASE_RETAIN_DAYS` (default 10). SQLite here is the long-term record;
+Firebase only needs a recent window for redundancy.
+
+Keys are listed with `?shallow=true`, so the cost of a sweep grows with the
+number of events rather than their size. Only children whose key parses as a
+unix timestamp older than the cutoff are deleted - a push id, a stray node, or
+anything unparseable is skipped, so the job cannot eat data it does not
+understand.
+
+Deleting needs write access, so retention runs only when `FIREBASE_DB_SECRET`
+is set; reads are public and need nothing.
+
 ## API
 
 | Method | Path | Purpose |

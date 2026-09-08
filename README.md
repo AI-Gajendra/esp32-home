@@ -151,6 +151,36 @@ cross-check each other: the server says *when*, the device says *why*.
 
 **Dashboard:** https://esphome.sitelala.qzz.io
 
+### What lands in Firebase
+
+| Path | Written | Kept |
+| --- | --- | --- |
+| `devices/esp32-home/status` | every minute, overwritten | latest only |
+| `devices/esp32-home/events/<start_ts>` | on recovery from an outage | 10 days |
+
+Outages get their own keyed node as well as riding along in `status`, because
+`status` is overwritten every minute - an outage recorded only there would
+vanish on the next heartbeat if nothing had read it in between, which is
+exactly the case Firebase is there to cover.
+
+Nothing in Firebase expires on its own, so the server sweeps events older than
+`FIREBASE_RETAIN_DAYS` (10) every hour. SQLite on the server keeps the
+long-term record; Firebase only needs a recent window. The sweeper only
+deletes children whose key parses as a unix timestamp older than the cutoff -
+anything it cannot identify is left alone.
+
+The device authenticates with a **legacy database secret** (`FIREBASE_DB_SECRET`
+in `config.h`). That is simpler than the Firebase Auth path - one string, no
+sign-in, nothing to expire - but it bypasses the security rules entirely and
+grants full access to the database, and it is recoverable from a firmware
+dump. It is acceptable here because the project holds nothing but this
+telemetry. Clear that define and fill in `FIREBASE_EMAIL` / `FIREBASE_PASSWORD`
+to switch back to scoped ID-token auth; the firmware supports both and picks
+whichever is configured.
+
+Database rules stay `read: true` on `devices/`, `write: false` for everyone -
+the secret bypasses them, so no other client can write.
+
 **Why it will not quietly go to sleep any more.** The supervision that reboots
 a wedged device runs on the main loop, not inside the monitor task - so a hang
 inside a socket call cannot disable its own watchdog:

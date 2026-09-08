@@ -13,6 +13,7 @@ namespace {
 constexpr const char *NVS_NS       = "bootguard";
 constexpr const char *KEY_PENDING  = "pending";
 constexpr const char *KEY_ATTEMPTS = "attempts";
+constexpr const char *KEY_BOOTS    = "boots";
 
 Preferences prefs;
 
@@ -20,6 +21,7 @@ bool     s_pending   = false;   /* running image awaits verification */
 bool     s_committed = false;   /* verified during THIS boot          */
 uint8_t  s_attempts  = 0;
 uint32_t s_bootMs    = 0;
+uint32_t s_boots     = 0;
 
 const char *partName(const esp_partition_t *p) { return p ? p->label : "?"; }
 
@@ -63,9 +65,11 @@ void begin() {
 
     s_pending  = prefs.getBool(KEY_PENDING, false);
     s_attempts = prefs.getUChar(KEY_ATTEMPTS, 0);
+    s_boots    = prefs.getULong(KEY_BOOTS, 0) + 1;
+    prefs.putULong(KEY_BOOTS, s_boots);
 
-    Serial.printf("[boot] slot=%s reset=%s pending=%s attempts=%u\n",
-                  runningSlot(), lastResetReason(),
+    Serial.printf("[boot] #%lu slot=%s reset=%s pending=%s attempts=%u\n",
+                  (unsigned long)s_boots, runningSlot(), lastResetReason(),
                   s_pending ? "yes" : "no", s_attempts);
 
     if (!s_pending) {
@@ -123,6 +127,7 @@ void markPendingVerify() {
 bool isPending()   { return s_pending && !s_committed; }
 bool isCommitted() { return s_committed; }
 uint8_t bootAttempts() { return s_attempts; }
+uint32_t bootCount() { return s_boots; }
 
 uint32_t msUntilCommit() {
     if (!isPending()) return 0;

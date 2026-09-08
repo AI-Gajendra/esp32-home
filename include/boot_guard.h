@@ -27,6 +27,8 @@ void markPendingVerify();          /* called by the OTA handler after a flash  *
 bool        isPending();           /* running image not yet committed          */
 bool        isCommitted();
 uint8_t     bootAttempts();        /* failed boots counted so far              */
+uint32_t    bootCount();           /* total boots ever - a reboot and an outage
+                                    * look identical from outside without it  */
 uint32_t    msUntilCommit();       /* 0 once committed                         */
 
 bool        rollback(String &err); /* manual: boot the other slot, no reboot   */

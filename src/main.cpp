@@ -11,9 +11,11 @@
 
 #include "boot_guard.h"
 #include "config.h"
+#include "monitor.h"
 #include "net.h"
 #include "ota_update.h"
 #include "relay.h"
+#include "timekeeping.h"
 #include "version.h"
 
 static AsyncWebServer server(HTTP_PORT);
@@ -150,6 +152,17 @@ static String healthJson() {
     j += "\"slot\":\"" + String(bootguard::runningSlot()) + "\",";
     j += "\"pending\":" + String(bootguard::isPending() ? "true" : "false") + ",";
     j += "\"relay\":" + String(relay::isOn() ? "true" : "false") + ",";
+    j += "\"link\":\"" + String(monitor::stateName()) + "\",";
+    j += "\"heartbeat_seq\":" + String(monitor::sequence()) + ",";
+    j += "\"since_publish_s\":" + String(monitor::secondsSinceGoodPublish()) + ",";
+    j += "\"publish_ok\":" + String(monitor::publishCount()) + ",";
+    j += "\"publish_failed\":" + String(monitor::publishFailures()) + ",";
+    j += "\"sink_server\":" + String(monitor::lastServerOk() ? "true" : "false") + ",";
+    j += "\"sink_firebase\":" + String(monitor::lastFirebaseOk() ? "true" : "false") + ",";
+    j += "\"probe_ms\":" + String(monitor::lastProbeMs()) + ",";
+    j += "\"pending_events\":" + String(monitor::pendingEvents()) + ",";
+    j += "\"boot_id\":" + String(bootguard::bootCount()) + ",";
+    j += "\"clock\":\"" + String(timekeeping::synced() ? "ntp" : (timekeeping::usable() ? "approx" : "unset")) + "\",";
     j += "\"relay_on_for_ms\":" + String(relay::onForMs()) + ",";
     j += "\"relay_auto_off_in_ms\":" + String(relay::msUntilAutoOff()) + ",";
     j += "\"free_heap\":" + String(ESP.getFreeHeap()) + ",";
@@ -186,8 +199,9 @@ void setup() {
      * possible - before the network can ask it to do anything. */
     relay::begin();
 
-    net::begin();       /* non-blocking - the server comes up either way */
-    ota::begin(server); /* /update and friends */
+    timekeeping::begin();  /* seeds the clock from NVS before anything needs it */
+    net::begin();          /* non-blocking - the server comes up either way */
+    ota::begin(server);    /* /update and friends */
     relay::registerRoutes(server);
 
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *req) {
@@ -204,12 +218,21 @@ void setup() {
 
     server.begin();
     Serial.printf("[http] listening on port %d\n", HTTP_PORT);
+
+#if MONITOR_ENABLED
+    /* Last, so the first heartbeat describes a device that is fully up. */
+    monitor::begin();
+#endif
 }
 
 void loop() {
     net::loop();
     ota::loop();
     relay::loop();
+    timekeeping::loop();
+#if MONITOR_ENABLED
+    monitor::loop();   /* supervises the monitor task from outside it */
+#endif
 
     /* "Healthy" for now means the device is reachable, which is the property
      * that lets you recover it. Extend this as the project grows - sensors

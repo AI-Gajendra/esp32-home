@@ -13,6 +13,8 @@ bool     s_apUp       = false;
 bool     s_mdnsUp     = false;
 uint32_t s_staStarted = 0;
 uint32_t s_lastRetry  = 0;
+uint32_t s_reconnects = 0;
+volatile bool s_reconnectRequest = false;
 
 void startStation() {
     s_staStarted = millis();
@@ -87,6 +89,19 @@ void begin() {
 }
 
 void loop() {
+    /* Honoured even while online: the monitor asks for this when publishes
+     * have been failing, which can happen on an association that looks fine
+     * but no longer passes traffic. */
+    if (s_reconnectRequest) {
+        s_reconnectRequest = false;
+        s_reconnects++;
+        Serial.println("[wifi] re-association requested");
+        WiFi.disconnect();
+        s_online = false;
+        startStation();
+        return;
+    }
+
     if (s_online) {
         stopFallbackAp();
         return;
@@ -102,10 +117,15 @@ void loop() {
     /* Keep trying forever - a router that comes back should heal itself. */
     if (now - s_lastRetry > WIFI_RETRY_INTERVAL_MS) {
         s_lastRetry = now;
+        s_reconnects++;
         WiFi.disconnect();
         startStation();
     }
 }
+
+void requestReconnect() { s_reconnectRequest = true; }
+
+uint32_t reconnectCount() { return s_reconnects; }
 
 bool isOnline()  { return s_online && WiFi.status() == WL_CONNECTED; }
 bool apActive()  { return s_apUp; }

@@ -26,4 +26,9 @@ String mac();
 String hostname();
 String statusText();
 
+/* Ask for a fresh association. Safe to call from another task: the request is
+ * a flag, and net::loop() on the main task does the actual work. */
+void     requestReconnect();
+uint32_t reconnectCount();
+
 }  // namespace net

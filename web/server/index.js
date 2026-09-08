@@ -14,6 +14,7 @@ import { dirname, join } from 'node:path';
 import { existsSync } from 'node:fs';
 import { openStore } from './store.js';
 import { makeFirebasePoller } from './firebase.js';
+import { makePruner } from './prune.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -36,6 +37,11 @@ const CFG = {
   gapSeconds: Number(process.env.GAP_SECONDS || 150),
   retainDays: Number(process.env.RETAIN_DAYS || 90),
   firebasePollMs: Number(process.env.FIREBASE_POLL_MS || 20000),
+  /* Deleting from Firebase needs write access, which the world-readable rules
+   * do not grant - so retention only runs when a credential is configured. */
+  dbSecret: process.env.FIREBASE_DB_SECRET || '',
+  firebaseRetainDays: Number(process.env.FIREBASE_RETAIN_DAYS || 10),
+  firebasePruneMs: Number(process.env.FIREBASE_PRUNE_MS || 3600000),
 };
 
 const now = () => Math.floor(Date.now() / 1000);
@@ -293,7 +299,13 @@ app.get('/api/events', (_req, res) => {
 });
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, device: CFG.device, firebase: Boolean(CFG.dbUrl), ts: now() });
+  res.json({
+    ok: true,
+    device: CFG.device,
+    firebase: Boolean(CFG.dbUrl),
+    firebase_retention_days: CFG.dbSecret ? CFG.firebaseRetainDays : null,
+    ts: now(),
+  });
 });
 
 function safeParse(s) {
@@ -327,6 +339,15 @@ if (CFG.dbUrl) {
 } else {
   console.log('[firebase] FIREBASE_DB_URL not set - direct ingest only');
 }
+
+const pruner = makePruner({
+  dbUrl: CFG.dbUrl,
+  secret: CFG.dbSecret,
+  device: CFG.device,
+  retainDays: CFG.firebaseRetainDays,
+  intervalMs: CFG.firebasePruneMs,
+});
+if (CFG.dbUrl) pruner.start();
 
 app.listen(CFG.port, '127.0.0.1', () => {
   console.log(`[http] esphome-uptime listening on 127.0.0.1:${CFG.port}`);

@@ -95,8 +95,26 @@ is set; reads are public and need nothing.
 | `GET` | `/api/outages?range=30d` | the outage log |
 | `GET` | `/api/events` | reboots and firmware changes |
 | `GET` | `/api/ping` | liveness, used as a probe target |
+| `GET` | `/api/relay` | relay state and any pending command |
+| `POST` | `/api/relay?state=on\|off\|toggle` | queue a command, `X-Relay-Pin: <pin>` |
 
-Everything except `/api/ingest` is public and read-only.
+Everything except `/api/ingest` and `POST /api/relay` is public and read-only.
+
+## Relay control
+
+This server cannot reach the ESP32 - it is behind NAT and only ever connects
+outward. So `POST /api/relay` parks the desired state here, and the reply to
+the device's next heartbeat carries it as `relay_desired`. The relay follows
+within one heartbeat (measured 40-42s); the device then re-publishes straight
+away so the dashboard stops saying "pending" seconds later rather than a minute
+later.
+
+`RELAY_PIN` guards this endpoint and nothing else, so the uptime history stays
+shareable. Six digits is only a million guesses, so wrong PINs are throttled
+per address: five failures earns a 15 minute lockout, during which even the
+correct PIN is refused. The comparison is length-independent so the PIN cannot
+be recovered a digit at a time by timing. Note the counters live in memory, so
+a restart clears them.
 
 ## Dashboard design notes
 

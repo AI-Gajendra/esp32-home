@@ -121,6 +121,30 @@ air is ever marked pending, so unplugging the board is not counted against it.
 \* set `RELAY_REQUIRE_AUTH` to 1 in `config.h` to put the OTA login in front of
 relay control too.
 
+### Switching it from outside the house
+
+The relay can also be switched from the public dashboard, PIN-gated. Nothing
+outside your LAN can open a connection to the ESP32, so the command is parked
+on the server and handed to the device in the reply to its next heartbeat -
+`POST /api/ingest` answers with `relay_desired`, and the device applies it.
+
+That makes the latency honest rather than hidden: measured **40-42 s to
+physically switch**, and about a minute for the dashboard to confirm, because
+the device re-publishes immediately after applying instead of waiting out the
+rest of the interval.
+
+Two deliberate limits:
+
+- A command nobody could deliver within `RELAY_COMMAND_TTL_S` (10 min) is
+  dropped rather than applied late. A relay flipping hours after you asked,
+  because the device only just came back, is worse than losing the command.
+- `toggle` is resolved to an absolute on/off at the moment you press it, not
+  when the device picks it up - a late-delivered "toggle" would otherwise mean
+  whatever the state happened to be by then.
+
+`relay::set()` is now reachable from three tasks (async web handler, auto-off
+timer, monitor applying a remote command), so it takes a mutex.
+
 ## Internet uptime monitoring
 
 Once a minute the device decides whether the internet actually works and

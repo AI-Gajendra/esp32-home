@@ -15,6 +15,7 @@ import { existsSync } from 'node:fs';
 import { openStore } from './store.js';
 import { makeFirebasePoller } from './firebase.js';
 import { makePruner } from './prune.js';
+import { makeRelayControl } from './relay.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -42,10 +43,19 @@ const CFG = {
   dbSecret: process.env.FIREBASE_DB_SECRET || '',
   firebaseRetainDays: Number(process.env.FIREBASE_RETAIN_DAYS || 10),
   firebasePruneMs: Number(process.env.FIREBASE_PRUNE_MS || 3600000),
+  /* Relay control. The PIN guards this and nothing else - the rest of the
+   * site stays public and read-only. */
+  relayPin: process.env.RELAY_PIN || '',
+  relayCommandTtlS: Number(process.env.RELAY_COMMAND_TTL_S || 600),
+  heartbeatPeriodS: Number(process.env.HEARTBEAT_PERIOD_S || 60),
 };
 
 const now = () => Math.floor(Date.now() / 1000);
 const store = openStore(CFG.dbFile);
+const relay = makeRelayControl({
+  pin: CFG.relayPin,
+  ttlSeconds: CFG.relayCommandTtlS,
+});
 const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
@@ -83,6 +93,8 @@ function recordHeartbeat(source, hb) {
     }
   }
 
+  relay.noteHeartbeat(hb.relay === true ? true : hb.relay === false ? false : undefined);
+
   closeOutageIfOpen(ts);
   return ts;
 }
@@ -96,7 +108,41 @@ app.post('/api/ingest', (req, res) => {
   if (!hb || typeof hb !== 'object') return res.status(400).json({ error: 'bad body' });
 
   const ts = recordHeartbeat('direct', hb);
-  res.json({ ok: true, server_ts: ts, gap_seconds: CFG.gapSeconds });
+
+  /* The only channel we have to the device: it asked us something, so the
+   * answer carries whatever we want it to do. null means "no change". */
+  res.json({
+    ok: true,
+    server_ts: ts,
+    gap_seconds: CFG.gapSeconds,
+    relay_desired: relay.pendingForDevice(),
+  });
+});
+
+/* Relay control. PIN-gated and rate-limited; everything else here is public. */
+app.post('/api/relay', (req, res) => {
+  const ip = req.ip || 'unknown';
+  const given = req.get('x-relay-pin') || req.body?.pin || '';
+
+  const auth = relay.authorize(ip, given);
+  if (!auth.ok) {
+    if (auth.retryAfter) res.set('Retry-After', String(auth.retryAfter));
+    return res.status(auth.status).json({ error: auth.error, retry_after_s: auth.retryAfter });
+  }
+
+  const want = String(req.query.state ?? req.body?.state ?? '').toLowerCase();
+  const result = relay.command(want, ip);
+  if (!result.ok) return res.status(400).json({ error: result.error });
+
+  const hb = store.lastHeartbeat(CFG.device);
+  const eta = hb ? Math.max(0, CFG.heartbeatPeriodS - (now() - hb.server_ts)) : null;
+  res.json({ ok: true, relay: relay.snapshot(eta) });
+});
+
+app.get('/api/relay', (_req, res) => {
+  const hb = store.lastHeartbeat(CFG.device);
+  const eta = hb ? Math.max(0, CFG.heartbeatPeriodS - (now() - hb.server_ts)) : null;
+  res.json(relay.snapshot(eta));
 });
 
 /* Lets the device confirm it has real internet without loading a third party. */
@@ -248,6 +294,7 @@ app.get('/api/status', (_req, res) => {
         }
       : null,
     monitoring_since: store.firstSeen(CFG.device),
+    relay: relay.snapshot(hb ? Math.max(0, CFG.heartbeatPeriodS - (ts - hb.server_ts)) : null),
   });
 });
 

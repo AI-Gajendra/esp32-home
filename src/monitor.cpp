@@ -1,5 +1,6 @@
 #include "monitor.h"
 
+#include <ArduinoJson.h>
 #include <HTTPClient.h>
 #include <Preferences.h>
 #include <WiFi.h>
@@ -45,6 +46,7 @@ volatile bool     s_firebaseOk    = false;
 volatile int32_t  s_probeMs       = -1;
 volatile uint8_t  s_pendingCount  = 0;
 volatile bool     s_reconnectAsked = false;
+volatile bool     s_forceCycle     = false;   /* publish now, do not wait out the minute */
 
 Outage s_outage      = { "", 0 };
 bool   s_outageOpen  = false;
@@ -176,6 +178,30 @@ String buildPayload() {
     return j;
 }
 
+/* The heartbeat reply is the only channel the server has back to this device -
+ * nothing outside the LAN can open a connection to it. So anything the server
+ * wants done rides in the answer to a request we made. */
+void applyServerReply(const String &body) {
+    JsonDocument filter;
+    filter["relay_desired"] = true;
+
+    JsonDocument doc;
+    if (deserializeJson(doc, body, DeserializationOption::Filter(filter))) return;
+
+    JsonVariant want = doc["relay_desired"];
+    if (want.isNull() || !want.is<bool>()) return;   /* null = nothing to do */
+
+    if (want.as<bool>() == relay::isOn()) return;
+
+    Serial.printf("[mon] server asked for relay %s\n", want.as<bool>() ? "ON" : "OFF");
+    relay::set(want.as<bool>(), "remote");
+
+    /* Report back straight away rather than waiting out the rest of the
+     * minute, so the dashboard stops saying "pending" seconds after the relay
+     * actually moved instead of a minute later. */
+    s_forceCycle = true;
+}
+
 bool postToServer(const String &payload) {
     WiFiClientSecure client;
     client.setCACert(LETSENCRYPT_ROOT_CA);
@@ -191,12 +217,14 @@ bool postToServer(const String &payload) {
     http.addHeader("Authorization", "Bearer " INGEST_TOKEN);
 
     int code = http.POST(payload);
+    String reply = (code == 200) ? http.getString() : String();
     http.end();
 
     if (code != 200) {
         Serial.printf("[mon] ingest HTTP %d\n", code);
         return false;
     }
+    applyServerReply(reply);
     return true;
 }
 
@@ -282,7 +310,9 @@ void task(void *) {
              * next cycle, so outage start times are accurate. */
             if (!wifiUp && s_state != Link::WifiDown) transition(Link::WifiDown);
 
-            if (millis() - s_lastCycleMs >= MONITOR_PERIOD_MS || s_lastCycleMs == 0) {
+            if (millis() - s_lastCycleMs >= MONITOR_PERIOD_MS || s_lastCycleMs == 0 ||
+                s_forceCycle) {
+                s_forceCycle = false;
                 cycle();
             }
         }

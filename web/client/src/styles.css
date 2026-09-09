@@ -162,3 +162,37 @@ tbody tr:last-child td { border-bottom: 0; }
 .empty { color: var(--muted); font-size: 13px; padding: 8px 0; }
 footer.foot { color: var(--muted); font-size: 12px; text-align: center; margin-top: 28px; }
 a { color: var(--series-1); }
+
+/* ── relay control ───────────────────────────────────────────────────────── */
+/* State is carried by the word ON/OFF and a filled-vs-hollow glyph as well as
+ * colour, for the same reason the timeline encodes by height: green and red
+ * are indistinguishable to a large minority of readers. */
+.relay-row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.relay-state { display: flex; align-items: center; gap: 10px; font-size: 24px; font-weight: 700; letter-spacing: 0.02em; }
+.relay-state .relay-glyph { font-size: 20px; }
+.relay-state.on { color: var(--good); }
+.relay-state.off { color: var(--muted); }
+.relay-state.unknown { color: var(--muted); }
+.relay-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.relay-actions button {
+  font: inherit; font-size: 14px; font-weight: 600; border: 0; border-radius: 8px;
+  padding: 10px 18px; cursor: pointer; color: #fff; background: var(--series-1);
+}
+.relay-actions button.ghost { background: transparent; border: 1px solid var(--ring); color: var(--ink); }
+.relay-actions button[disabled] { opacity: 0.45; cursor: not-allowed; }
+
+.relay-pin { display: flex; align-items: center; gap: 10px; margin-top: 16px; }
+.relay-pin label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
+.relay-pin input {
+  font: inherit; font-size: 14px; letter-spacing: 0.18em; width: 190px;
+  padding: 9px 12px; border-radius: 8px; border: 1px solid var(--ring);
+  background: var(--page); color: var(--ink);
+}
+
+.relay-pending, .relay-warn, .relay-err, .relay-note {
+  margin-top: 12px; font-size: 13px; border-radius: 8px; padding: 9px 12px;
+}
+.relay-pending { background: color-mix(in srgb, var(--warning) 14%, transparent); color: var(--ink); }
+.relay-warn    { background: color-mix(in srgb, var(--serious) 14%, transparent); color: var(--ink); }
+.relay-err     { background: color-mix(in srgb, var(--critical) 16%, transparent); color: var(--ink); }
+.relay-note    { background: color-mix(in srgb, var(--good) 14%, transparent); color: var(--ink); }

@@ -387,6 +387,109 @@ function Outages({ outages }) {
   );
 }
 
+/* ── relay control ───────────────────────────────────────────────────────── */
+
+/* The server cannot reach the device, so a command is parked there and picked
+ * up on the next heartbeat. The UI has to be honest about that: the switch
+ * shows what the device last reported, and a separate pending line shows what
+ * it has been asked to do and roughly when it will happen. Nothing here
+ * pretends the relay moved before the device said it did. */
+function RelayControl({ relay, online, lastSeen }) {
+  const [pin, setPin] = useState(() => {
+    try { return sessionStorage.getItem('relayPin') || ''; } catch { return ''; }
+  });
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const [note, setNote] = useState(null);
+
+  if (!relay) return null;
+
+  const on = relay.state === true;
+  const known = relay.state !== null && relay.state !== undefined;
+
+  async function send(state) {
+    if (!pin) { setErr('Enter the PIN first.'); return; }
+    setBusy(true); setErr(null); setNote(null);
+    try {
+      const res = await fetch(`/api/relay?state=${state}`, {
+        method: 'POST',
+        headers: { 'X-Relay-Pin': pin },
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setErr(body.retry_after_s
+          ? `${body.error} - locked out for ${dur(body.retry_after_s)}`
+          : (body.error || `HTTP ${res.status}`));
+        return;
+      }
+      try { sessionStorage.setItem('relayPin', pin); } catch { /* private mode */ }
+      const eta = body.relay?.eta_s;
+      setNote(`Queued. The device picks this up on its next heartbeat${
+        eta != null ? `, in about ${eta}s` : ''}.`);
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="card">
+      <h2>Relay - GPIO 23</h2>
+      <p className="caption">
+        Switched through the heartbeat, not directly - the device sits behind your
+        router, so nothing outside can reach it. Expect it to follow within a minute.
+      </p>
+
+      <div className="relay-row">
+        <div className={`relay-state ${known ? (on ? 'on' : 'off') : 'unknown'}`}>
+          <span className="relay-glyph" aria-hidden="true">{known ? (on ? '●' : '○') : '?'}</span>
+          {known ? (on ? 'ON' : 'OFF') : 'unknown'}
+        </div>
+        <div className="grow" />
+        <div className="relay-actions">
+          <button disabled={busy || !relay.configured} onClick={() => send('on')}>Turn on</button>
+          <button className="ghost" disabled={busy || !relay.configured} onClick={() => send('off')}>Turn off</button>
+        </div>
+      </div>
+
+      {relay.pending && (
+        <div className="relay-pending">
+          Waiting for the device to switch <b>{relay.desired ? 'ON' : 'OFF'}</b>
+          {relay.eta_s != null && ` - next heartbeat in about ${relay.eta_s}s`}
+          {relay.expires_in_s != null && relay.expires_in_s < 120 &&
+            ` (command expires in ${dur(relay.expires_in_s)})`}
+        </div>
+      )}
+
+      {!online && (
+        <div className="relay-warn">
+          The device is not reporting right now. A command will sit queued and be
+          dropped if it cannot be delivered
+          {relay.expires_in_s != null ? ` within ${dur(relay.expires_in_s)}` : ' in time'} -
+          better than a relay flipping hours later.
+          {lastSeen && ` Last seen ${asDateTime(lastSeen)}.`}
+        </div>
+      )}
+
+      <div className="relay-pin">
+        <label htmlFor="pin">PIN</label>
+        <input
+          id="pin" type="password" inputMode="numeric" autoComplete="off"
+          placeholder="required to switch" value={pin}
+          onChange={(e) => { setPin(e.target.value); setErr(null); }}
+        />
+      </div>
+
+      {err && <div className="relay-err">{err}</div>}
+      {note && !err && <div className="relay-note">{note}</div>}
+      {!relay.configured && (
+        <div className="relay-err">Relay control is not configured on the server.</div>
+      )}
+    </div>
+  );
+}
+
 /* ── device panel ────────────────────────────────────────────────────────── */
 
 function Device({ status, events }) {
@@ -503,6 +606,12 @@ export default function App() {
 
       <Kpis stats={stats} range={range} />
       <div style={{ height: 16 }} />
+
+      <RelayControl
+        relay={status?.relay}
+        online={status?.online ?? false}
+        lastSeen={status?.last_seen}
+      />
 
       <Timeline timeline={timeline} tip={tip} />
       <DailyBars daily={stats?.daily} tip={tip} />

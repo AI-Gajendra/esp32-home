@@ -15,6 +15,11 @@ constexpr uint8_t OFF_LEVEL = RELAY_ACTIVE_LOW ? HIGH : LOW;
 
 Preferences prefs;
 
+/* set() is now reachable from three tasks: the async web handler, the main
+ * loop's auto-off timer, and the monitor task applying a remote command. They
+ * all touch the same NVS handle and the same pin, so serialise them. */
+SemaphoreHandle_t s_lock = nullptr;
+
 bool     s_on      = false;
 uint32_t s_since   = 0;   /* millis() when it was switched on */
 
@@ -58,6 +63,8 @@ bool authOk(AsyncWebServerRequest *req) {
 }  // namespace
 
 void begin() {
+    if (!s_lock) s_lock = xSemaphoreCreateMutex();
+
     /* Order matters: park the output latch at the OFF level first, so the
      * instant the pad becomes an output it is already in a safe state. */
     digitalWrite(RELAY_PIN, OFF_LEVEL);
@@ -83,15 +90,19 @@ void loop() {
 }
 
 bool set(bool on, const char *source) {
-    if (on == s_on) return s_on;
+    if (s_lock) xSemaphoreTake(s_lock, portMAX_DELAY);
 
-    s_on = on;
-    drive(on);
-    if (on) s_since = millis();
+    if (on != s_on) {
+        s_on = on;
+        drive(on);
+        if (on) s_since = millis();
+        prefs.putBool("on", on);
+        Serial.printf("[relay] %s (%s)\n", on ? "ON" : "OFF", source ? source : "?");
+    }
 
-    prefs.putBool("on", on);
-    Serial.printf("[relay] %s (%s)\n", on ? "ON" : "OFF", source ? source : "?");
-    return s_on;
+    bool state = s_on;
+    if (s_lock) xSemaphoreGive(s_lock);
+    return state;
 }
 
 bool toggle(const char *source) { return set(!s_on, source); }

@@ -7,6 +7,7 @@ const RANGES = [
   ['24h', '24 hours'],
   ['7d', '7 days'],
   ['30d', '30 days'],
+  ['90d', '90 days'],
 ];
 
 function dur(s) {
@@ -270,23 +271,24 @@ function Timeline({ timeline, tip }) {
 
 /* ── downtime per day ────────────────────────────────────────────────────── */
 
-function DailyBars({ daily, tip }) {
+function DailyBars({ daily, days, tip }) {
   const [ref, w] = useWidth();
   const H = 150, PAD_B = 22, PAD_T = 10;
-  const rows = daily ?? [];
+  const rows = (daily ?? []).slice(-days);
   const mins = rows.map((d) => (d.covered_s > 0 ? d.down_s / 60 : 0));
   const max = Math.max(10, Math.ceil(Math.max(0, ...mins) / 10) * 10);
   const plot = H - PAD_B - PAD_T;
   const step = rows.length ? w / rows.length : 0;
-  const bw = Math.max(2, step - 3);
+  /* 90 bars on a phone leaves ~4px each: shrink the gap rather than the bar. */
+  const bw = Math.max(2, step - Math.min(3, step * 0.3));
 
   return (
     <div className="card">
       <h2>Downtime per day</h2>
-      <p className="caption">Minutes offline each day for the last 30 days.</p>
+      <p className="caption">Minutes offline each day for the last {days} days.</p>
       <div className="bars" ref={ref}>
         {w > 0 && (
-          <svg height={H} role="img" aria-label="Minutes of downtime per day over the last 30 days">
+          <svg height={H} role="img" aria-label={`Minutes of downtime per day over the last ${days} days`}>
             {[0, 0.5, 1].map((f) => (
               <g key={f}>
                 <line x1="0" x2={w} y1={PAD_T + plot * (1 - f)} y2={PAD_T + plot * (1 - f)}
@@ -580,7 +582,7 @@ export default function App() {
         <div>
           <h1>Internet uptime</h1>
           <div className="sub">
-            Watched from the outside by an ESP32 on your home Wi-Fi, reporting once a minute.
+            Watched from the outside by an ESP32 on your home Wi-Fi, reporting every 15 seconds.
           </div>
         </div>
       </header>
@@ -626,7 +628,7 @@ export default function App() {
       />
 
       <Timeline timeline={timeline} tip={tip} />
-      <DailyBars daily={stats?.daily} tip={tip} />
+      <DailyBars daily={stats?.daily} days={range === '90d' ? 90 : 30} tip={tip} />
       <Outages outages={outages} />
       <Device status={status} events={events} />
 

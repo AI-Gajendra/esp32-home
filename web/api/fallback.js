@@ -25,10 +25,10 @@ const CFG = {
   /* The server sweeps events older than this; anything older may be gone, so
    * coverage is only claimed from here on (or from the oldest event left). */
   firebaseRetainDays: Number(process.env.FIREBASE_RETAIN_DAYS || 10),
-  heartbeatPeriodS: Number(process.env.HEARTBEAT_PERIOD_S || 60),
+  heartbeatPeriodS: Number(process.env.HEARTBEAT_PERIOD_S || 15),
 };
 
-const RANGES = { '1h': 3600, '24h': 86400, '7d': 604800, '30d': 2592000 };
+const RANGES = { '1h': 3600, '24h': 86400, '7d': 604800, '30d': 2592000, '90d': 7776000 };
 const now = () => Math.floor(Date.now() / 1000);
 
 async function rtdb(path) {
@@ -44,7 +44,7 @@ async function rtdb(path) {
 async function load() {
   const ts = now();
   /* Keys are 10-digit unix timestamps, so string order is time order. */
-  const since = encodeURIComponent(`"${ts - RANGES['30d']}"`);
+  const since = encodeURIComponent(`"${ts - RANGES['90d']}"`);
   const [status, events] = await Promise.all([
     rtdb('status.json'),
     rtdb(`events.json?orderBy=%22%24key%22&startAt=${since}`),
@@ -194,7 +194,7 @@ const routes = {
     const to = d.ts;
     const ranges = {};
     for (const [name, secs] of Object.entries(RANGES)) ranges[name] = windowStats(d, to - secs, to);
-    return { server_ts: to, ranges, daily: dailyBuckets(d, 30) };
+    return { server_ts: to, ranges, daily: dailyBuckets(d, 90) };
   },
 
   timeline(d, q) {

@@ -2,7 +2,7 @@
 #include <Arduino.h>
 
 /* ───────────────────────────────────────────────────────────────────────────
- *  monitor - decides once a minute whether the internet actually works, and
+ *  monitor - decides every heartbeat whether the internet actually works, and
  *  reports that to two independent sinks.
  *
  *  Three states, and the difference between the last two is the whole point:

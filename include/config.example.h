@@ -59,12 +59,12 @@
 #define RELAY_REQUIRE_AUTH      0
 
 /* ── Internet uptime monitor ──────────────────────────────────────────────────
- * Every minute the device decides whether the internet works and reports that
+ * Every 15 seconds the device decides whether the internet works and reports that
  * to two independent places. Silence in both is what the dashboard treats as an
  * outage, so a failure of either sink is distinguishable from a real one. */
 #define MONITOR_ENABLED             1
 #define MONITOR_DEVICE_ID           "esp32-home"
-#define MONITOR_PERIOD_MS           60000UL
+#define MONITOR_PERIOD_MS           15000UL
 
 /* Neutral internet probe. A captive portal or a dead WAN answers with
  * something other than 204, which is exactly the case we want to catch:

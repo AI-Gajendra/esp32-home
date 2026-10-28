@@ -47,7 +47,7 @@ There are no tests or linters in either half (`test/` is the PlatformIO placehol
 
 ## Device ↔ server contract
 
-The device is behind NAT and only ever connects outward. Every `MONITOR_PERIOD_MS` (60 s) it publishes the same heartbeat to two sinks:
+The device is behind NAT and only ever connects outward. Every `MONITOR_PERIOD_MS` (15 s) it publishes the same heartbeat to two sinks:
 
 1. `POST INGEST_URL` (`/api/ingest`, `Authorization: Bearer INGEST_TOKEN`; the token must match `INGEST_TOKEN` in the server's `.env`).
 2. Firebase RTDB `devices/<id>/status` (overwritten) and `devices/<id>/events/<start_ts>` (outage backfill on recovery).
@@ -62,5 +62,5 @@ Remote relay control rides on this: `POST /api/relay` (PIN-gated, `web/server/re
 - `server/store.js`: SQLite (`node:sqlite`); raw heartbeats pruned after `RETAIN_DAYS`, outages/events kept forever.
 - `server/prune.js`: hourly Firebase retention sweep. It only deletes `events` children whose key parses as a unix timestamp older than the cutoff; preserve that conservatism.
 - `client/`: single-file React 19 dashboard (`App.jsx`). State on the timeline is encoded by segment height first, colour second (colour-vision accessibility). Keep that when changing it.
-- Deployed to `~/apps/esphome-uptime` on host `oci-free-2` under pm2 (`ecosystem.config.cjs`) behind nginx; redeploy steps are in `web/README.md`.
+- Deployed to `~/apps/esphome-uptime` on host `oci-free` (migrated from `oci-free-2`) under pm2 (`ecosystem.config.cjs`) behind nginx; redeploy steps are in `web/README.md`.
 - Read-only fallback on Vercel (project `esphome-uptime`, https://esphome-uptime.vercel.app; `vercel deploy --prod` from `web/`): `api/fallback.js` serves the same `/api/*` response shapes rebuilt per request from Firebase alone (no SQLite, ingest or relay control). `vercel.json` rewrites `/api/*` to it, and `.vercelignore` keeps `server/` and `.env` out of the upload. If you change a response shape in `server/index.js`, change the fallback too.

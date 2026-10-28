@@ -94,14 +94,18 @@ export function openStore(file) {
         (device, kind, start_ts, end_ts, duration_s, source, note)
       VALUES (?,?,?,?,?, 'device', ?)`),
 
-    outagesSince: db.prepare(`
-      SELECT * FROM outages
-      WHERE device = ? AND (end_ts IS NULL OR end_ts >= ?)
-      ORDER BY start_ts DESC LIMIT 500`),
-
+    /* One query per source: the device reports far more (short) outages than
+     * the server detects, so a shared row limit would push older server
+     * outages out of long ranges. */
     outagesBetween: db.prepare(`
       SELECT * FROM outages
       WHERE device = ? AND source = 'server'
+        AND start_ts < ? AND (end_ts IS NULL OR end_ts > ?)
+      ORDER BY start_ts ASC`),
+
+    deviceOutagesBetween: db.prepare(`
+      SELECT * FROM outages
+      WHERE device = ? AND source = 'device'
         AND start_ts < ? AND (end_ts IS NULL OR end_ts > ?)
       ORDER BY start_ts ASC`),
 
@@ -167,12 +171,12 @@ export function openStore(file) {
       );
     },
 
-    outagesSince(device, ts) {
-      return q.outagesSince.all(device, ts);
-    },
-
     outagesBetween(device, from, to) {
       return q.outagesBetween.all(device, to, from);
+    },
+
+    deviceOutagesBetween(device, from, to) {
+      return q.deviceOutagesBetween.all(device, to, from);
     },
 
     addEvent(device, ts, type, detail) {

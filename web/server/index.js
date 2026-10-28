@@ -47,7 +47,7 @@ const CFG = {
    * site stays public and read-only. */
   relayPin: process.env.RELAY_PIN || '',
   relayCommandTtlS: Number(process.env.RELAY_COMMAND_TTL_S || 600),
-  heartbeatPeriodS: Number(process.env.HEARTBEAT_PERIOD_S || 60),
+  heartbeatPeriodS: Number(process.env.HEARTBEAT_PERIOD_S || 15),
 };
 
 const now = () => Math.floor(Date.now() / 1000);
@@ -184,8 +184,7 @@ const overlap = (aFrom, aTo, bFrom, bTo) =>
  *  the device reported for the same window (if it managed to tell us later). */
 function outageSegments(from, to) {
   const server = store.outagesBetween(CFG.device, from, to);
-  const reported = store.outagesSince(CFG.device, from - 86400)
-    .filter((o) => o.source === 'device');
+  const reported = store.deviceOutagesBetween(CFG.device, from - 86400, to);
 
   return server.map((o) => {
     const end = o.end_ts ?? to;
@@ -259,7 +258,7 @@ function dailyBuckets(days) {
 
 /* ── API ─────────────────────────────────────────────────────────────────── */
 
-const RANGES = { '1h': 3600, '24h': 86400, '7d': 604800, '30d': 2592000 };
+const RANGES = { '1h': 3600, '24h': 86400, '7d': 604800, '30d': 2592000, '90d': 7776000 };
 
 app.get('/api/status', (_req, res) => {
   const ts = now();
@@ -302,7 +301,9 @@ app.get('/api/stats', (_req, res) => {
   const to = now();
   const out = {};
   for (const [name, secs] of Object.entries(RANGES)) out[name] = windowStats(to - secs, to);
-  res.json({ server_ts: to, ranges: out, daily: dailyBuckets(30) });
+  /* 90 days so the longest range has a bar per day; the client shows the
+   * last 30 unless 90d is selected. */
+  res.json({ server_ts: to, ranges: out, daily: dailyBuckets(90) });
 });
 
 app.get('/api/timeline', (req, res) => {
@@ -320,9 +321,8 @@ app.get('/api/timeline', (req, res) => {
 app.get('/api/outages', (req, res) => {
   const to = now();
   const secs = RANGES[req.query.range] ?? RANGES['30d'];
-  const rows = store.outagesSince(CFG.device, to - secs);
-  const server = rows.filter((r) => r.source === 'server');
-  const device = rows.filter((r) => r.source === 'device');
+  const server = store.outagesBetween(CFG.device, to - secs, to).reverse();
+  const device = store.deviceOutagesBetween(CFG.device, to - secs, to);
 
   res.json({
     outages: server.map((o) => {

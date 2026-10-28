@@ -14,7 +14,7 @@ So the ESP32 pushes every heartbeat to **two independent sinks**:
 
 ```
                     ┌──────────────► Firebase RTDB ──┐  polled every 20s
-ESP32 ── every 60s ─┤                                ├──► this server ──► SQLite
+ESP32 ── every 15s ─┤                                ├──► this server ──► SQLite
                     └──────────────► POST /api/ingest┘        │
                                                               ├─ gap detector (15s)
                                                               └─ dashboard + API
@@ -46,7 +46,7 @@ ecosystem.config.cjs  pm2
 
 ## Operating it
 
-Deployed at `/home/ubuntu/apps/esphome-uptime` on `oci-free-2`, behind nginx
+Deployed at `/home/ubuntu/apps/esphome-uptime` on `oci-free`, behind nginx
 (`/etc/nginx/sites-available/esphome-uptime`) with a Let's Encrypt certificate,
 proxying to `127.0.0.1:3123`. It runs under pm2 and is enabled at boot.
 
@@ -60,10 +60,15 @@ To redeploy from a dev machine:
 
 ```bash
 cd web
-tar --exclude=node_modules --exclude=dist --exclude=data -czf - . \
-  | ssh oci-free-2 'tar -xzf - -C ~/apps/esphome-uptime'
-ssh oci-free-2 'bash -lc "cd ~/apps/esphome-uptime && npm install && npm run build && pm2 restart esphome-uptime"'
+tar --exclude=node_modules --exclude=dist --exclude=data \
+    --exclude=.env --exclude=.env.local --exclude=.vercel --exclude=package-lock.json \
+    --exclude=api --exclude=vercel.json --exclude=.vercelignore -czf - . \
+  | ssh oci-free 'tar -xzf - -C ~/apps/esphome-uptime'
+ssh oci-free 'bash -lc "cd ~/apps/esphome-uptime && npm install && npm run build && pm2 restart esphome-uptime"'
 ```
+
+The server keeps its own `.env` and `package-lock.json`; `api/`, `vercel.json`
+and `.vercelignore` belong to the Vercel fallback only.
 
 Configuration is `.env` (never committed) — see `.env.example`. `INGEST_TOKEN`
 must match `INGEST_TOKEN` in the firmware's `include/config.h`.
@@ -105,9 +110,9 @@ Everything except `/api/ingest` and `POST /api/relay` is public and read-only.
 This server cannot reach the ESP32 - it is behind NAT and only ever connects
 outward. So `POST /api/relay` parks the desired state here, and the reply to
 the device's next heartbeat carries it as `relay_desired`. The relay follows
-within one heartbeat (measured 40-42s); the device then re-publishes straight
-away so the dashboard stops saying "pending" seconds later rather than a minute
-later.
+within one heartbeat (up to 15s); the device then re-publishes straight away so
+the dashboard stops saying "pending" seconds later rather than at the next
+heartbeat.
 
 `RELAY_PIN` guards this endpoint and nothing else, so the uptime history stays
 shareable. Six digits is only a million guesses, so wrong PINs are throttled

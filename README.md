@@ -15,7 +15,7 @@ include/
   version.h                 FW_VERSION, build stamp
   net.h                     non-blocking Wi-Fi with fallback AP
   relay.h                   one relay channel on GPIO 23
-  monitor.h                 internet up/down watcher, publishes every 60s
+  monitor.h                 internet up/down watcher, publishes every 15s
   fb_client.h               Firebase Realtime Database REST client
   timekeeping.h             NTP + an NVS-backed clock that survives outages
   certs.h                   pinned root CAs (generated)
@@ -128,10 +128,11 @@ outside your LAN can open a connection to the ESP32, so the command is parked
 on the server and handed to the device in the reply to its next heartbeat -
 `POST /api/ingest` answers with `relay_desired`, and the device applies it.
 
-That makes the latency honest rather than hidden: measured **40-42 s to
-physically switch**, and about a minute for the dashboard to confirm, because
-the device re-publishes immediately after applying instead of waiting out the
-rest of the interval.
+That makes the latency honest rather than hidden: the relay switches within
+one heartbeat (up to 15 s; it measured 40-42 s back when the heartbeat was
+60 s), and the dashboard confirms shortly after, because the device
+re-publishes immediately after applying instead of waiting out the rest of the
+interval.
 
 Two deliberate limits:
 
@@ -147,7 +148,7 @@ timer, monitor applying a remote command), so it takes a mutex.
 
 ## Internet uptime monitoring
 
-Once a minute the device decides whether the internet actually works and
+Every 15 seconds (`MONITOR_PERIOD_MS`) the device decides whether the internet actually works and
 reports it to two independent places, so the dashboard can tell a real outage
 apart from a broken reporting path.
 
@@ -179,11 +180,11 @@ cross-check each other: the server says *when*, the device says *why*.
 
 | Path | Written | Kept |
 | --- | --- | --- |
-| `devices/esp32-home/status` | every minute, overwritten | latest only |
+| `devices/esp32-home/status` | every heartbeat, overwritten | latest only |
 | `devices/esp32-home/events/<start_ts>` | on recovery from an outage | 10 days |
 
 Outages get their own keyed node as well as riding along in `status`, because
-`status` is overwritten every minute - an outage recorded only there would
+`status` is overwritten every heartbeat - an outage recorded only there would
 vanish on the next heartbeat if nothing had read it in between, which is
 exactly the case Firebase is there to cover.
 

@@ -1,0 +1,12 @@
+# Replaces .gitignore for `vercel deploy` uploads, so it repeats it.
+node_modules
+dist
+data
+*.log
+.env
+.env.local
+.vercel
+
+# The long-running server is not deployed to Vercel - api/fallback.js stands in.
+server
+ecosystem.config.cjs

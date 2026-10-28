@@ -592,6 +592,18 @@ export default function App() {
         </div>
       )}
 
+      {status?.mode === 'firebase-fallback' && (
+        <div className="card">
+          <b>Fallback mode</b>
+          <div className="empty">
+            The monitor server is offline, so this view is rebuilt from Firebase alone: outages
+            the device reported itself
+            {status.monitoring_since && ` over the last ${Math.round((status.server_ts - status.monitoring_since) / 86400)} days`},
+            no long-term history, and relay control is unavailable.
+          </div>
+        </div>
+      )}
+
       <Hero status={status} />
 
       <div className="filters">
